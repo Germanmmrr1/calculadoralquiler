@@ -345,7 +345,7 @@ elif st.session_state.step == 3:
 <div style="border-radius:13px;background:#f8fbff;border:2.2px solid #dde4ee;padding:1.35em 1.3em 1.05em 1.3em; margin-bottom:1.25em; color:#1a2635; font-size:1.07em; box-shadow:0 4px 16px #dde4ee3c;">
 <b style='color:#232323;font-size:1.11em;'>Cálculo del beneficio anual después de impuestos:</b>
 <ul style="margin:0.4em 0 0.2em 1.3em;padding:0;">
-<li>= Beneficio antes de amortización: <b>{format_number(net_before_tax)}</b></li>
+<li>= Beneficio antes de impuestos: <b>{format_number(net_before_tax)}</b></li>
 <li>- Amortización anual deducible: <b>{format_number(amort)}</b></li>
 <li>= Base imponible fiscal: <b>{format_number(net_before_tax_amort)}</b></li>"""
 
@@ -372,7 +372,7 @@ elif st.session_state.step == 3:
     resultado_html = f"""
 <div style="border-radius:14px;background:#f9faff;border:2px solid #dde4ee;padding:1.5em 1.5em 0.6em 1.5em;margin-bottom:1.2em;">
 <div style="font-size:1.15em;font-weight:700;color:#15539c;">
-💼 <b>Total inversión inicial necesaria:</b> <span style='float:right;font-size:1.17em;color:#205520;'>{format_number(inv)}</span>
+💼 <b>Total inversión inicial:</b> <span style='float:right;font-size:1.17em;color:#205520;'>{format_number(inv)}</span>
 </div>
 </div>
 <div style="border-radius:14px;background:#e8f9f2;border:2px solid #c2e3d6;padding:1.1em 1.4em 0.7em 1.4em;margin-bottom:0.9em;">
@@ -390,7 +390,7 @@ elif st.session_state.step == 3:
 <div style="border-radius:12px;background:#fffef4;border:2px solid #ffeabf;padding:1.1em 1.2em 0.8em 1.2em; margin-bottom:1.1em;">
 <b style='color:#9a7700;font-size:1.09em;'>Rentabilidad anual antes de impuestos:</b>
 <span style='float:right;color:#ad860a;font-weight:700;font-size:1.14em;'>{format_number(net_before_tax)}</span>
-<div style='color:#333; font-size:0.98em; margin-top:0.18em;'>Es el beneficio anual antes de impuestos y amortización. No descuenta ni amortización ni IRPF.</div>
+<div style='color:#333; font-size:0.98em; margin-top:0.18em;'>Es el beneficio anual antes de impuestos y amortización.</div>
 </div>
 """
 
@@ -399,7 +399,7 @@ elif st.session_state.step == 3:
 
     st.markdown(f"""
 <div style="border-radius:12px;background:#f1ffec;border:2px solid #d8f8cc;padding:1.1em 1.2em 0.8em 1.2em;">
-<b style='color:#237319;font-size:1.12em;'>Beneficio anual después de impuestos:</b>
+<b style='color:#237319;font-size:1.12em;'>Beneficio anual neto:</b>
 <span style='float:right;color:#167c2d;font-weight:900;font-size:1.20em;'>{format_number(net_after_tax)}</span>
 </div>
 <div style="margin:1.1em 0 0.7em 0; color:#2c566e; font-weight:500;">
