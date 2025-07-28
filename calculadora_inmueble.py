@@ -351,7 +351,7 @@ elif st.session_state.step == 3:
 
     if aplica_reduccion_60:
         calculo_detalle += f"""
-<li>- Reducción del 60% arrendamiento vivienda habitual: <b>{format_number(net_before_tax_amort)} x 60% = {format_number(reduc_60)}</b></li>
+<li>- Reducción del 60% vivienda habitual: <b>{format_number(net_before_tax_amort)} x 60% = {format_number(reduc_60)}</b></li>
 <li>= Base sujeta a IRPF: <b>{format_number(base_sujeta)}</b></li>
 """
     else:
