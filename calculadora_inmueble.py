@@ -228,7 +228,7 @@ elif st.session_state.step == 2:
     col1, col2 = st.columns(2)
     with col1:
         irpf_marginal = st.number_input(
-            "Tipo marginal IRPF (%)", min_value=0.0, max_value=55.0, value=30.0,
+            "Tipo marginal IRPF (%)", min_value=0.0, max_value=55.0, value=25.0,
             help="Tu tipo marginal de IRPF. Consulta el tramo que te corresponde."
         )
     with col2:
@@ -250,7 +250,7 @@ elif st.session_state.step == 2:
             help="Seguro que cubre el impago de la renta por parte del inquilino."
         )
         impuesto_basuras = st.number_input(
-            "Impuesto de basuras (€)", min_value=0, max_value=1000, value=98,
+            "Impuesto de basuras (€)", min_value=0, max_value=1000, value=100,
             help="Tasa municipal por la recogida de residuos urbanos."
         )
         seguro_hogar = st.number_input(
@@ -258,7 +258,7 @@ elif st.session_state.step == 2:
             help="Seguro de daños sobre la vivienda alquilada."
         )
         seguro_vida = st.number_input(
-            "Seguro de vida (€)", min_value=0, max_value=2000, value=93,
+            "Seguro de vida (€)", min_value=0, max_value=2000, value=100,
             help="Seguro de vida vinculado a la hipoteca (opcional o según banco)."
         )
     with col2:
@@ -267,7 +267,7 @@ elif st.session_state.step == 2:
             help="Cuota anual de la comunidad de vecinos."
         )
         ibi = st.number_input(
-            "IBI (€)", min_value=0, max_value=3000, value=175,
+            "IBI (€)", min_value=0, max_value=3000, value=200,
             help="Impuesto sobre Bienes Inmuebles municipal."
         )
         mantenimiento = st.number_input(
