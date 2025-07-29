@@ -9,6 +9,7 @@ import plotly.graph_objects as go
 import plotly.express as px
 from plotly.subplots import make_subplots
 import numpy as np
+import streamlit.components.v1 as components
 
 top_placeholder = st.empty()
 
@@ -565,6 +566,7 @@ Esta herramienta te ayuda a analizar la rentabilidad y el cashflow de invertir e
         cambiar_paso(2)
 
 elif st.session_state.step == 2:
+    components.html("<script>window.scrollTo(0, 0);</script>", height=0)
     st.markdown("<div class='step-header'>Introduce los datos de tu inversión</div>", unsafe_allow_html=True)
     
     # Mandatory scenario naming section
