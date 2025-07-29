@@ -1,16 +1,146 @@
 import streamlit as st
 import math
+import json
+from datetime import datetime
+import pandas as pd
 
 st.set_page_config(page_title="Calculadora de inversión inmobiliaria", layout="centered")
 
 st.markdown("""
 <style>
-.big-title { font-size: 2.2em; font-weight: 800; text-align: center; margin-bottom: 0.15em; margin-top: 0.4em;}
-.step-header {font-size: 1.5em; font-weight: bold; color: #4CAF50;}
-.block-title { font-size: 1.13em; font-weight: bold; color: #207ca5; margin-bottom: 0.3em; margin-top:0.2em;}
-.block-box { border: 2px solid #e7e8fa; border-radius: 10px; background: #f8fafb; padding: 1.1em 1.2em 0.8em 1.2em; margin-bottom: 1.2em;}
+.big-title { 
+    font-size: 2.2em; 
+    font-weight: 800; 
+    text-align: center; 
+    margin-bottom: 0.15em; 
+    margin-top: 0.4em;
+}
+.step-header {
+    font-size: 1.5em; 
+    font-weight: bold; 
+    color: #4CAF50;
+}
+.block-title { 
+    font-size: 1.13em; 
+    font-weight: bold; 
+    color: #207ca5; 
+    margin-bottom: 0.3em; 
+    margin-top:0.2em;
+}
+.block-box { 
+    border: 2px solid #e7e8fa; 
+    border-radius: 10px; 
+    background: #f8fafb; 
+    padding: 1.1em 1.2em 0.8em 1.2em; 
+    margin-bottom: 1.2em;
+}
+
+/* Mobile responsiveness */
+@media (max-width: 768px) {
+    .big-title { 
+        font-size: 1.8em; 
+        line-height: 1.2;
+    }
+    .step-header { 
+        font-size: 1.3em; 
+    }
+    .block-box { 
+        padding: 0.8em 1em 0.6em 1em; 
+        margin-bottom: 1em;
+    }
+    /* Stack columns on mobile */
+    .element-container .row-widget.stColumns {
+        flex-direction: column !important;
+    }
+    .element-container .row-widget.stColumns > div {
+        width: 100% !important;
+        margin-bottom: 1rem;
+    }
+}
+
+/* Better button styling */
+.stButton > button {
+    width: 100%;
+    border-radius: 8px;
+    transition: all 0.3s ease;
+}
+
+.stButton > button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
+
+/* Improved expander styling */
+.streamlit-expanderHeader {
+    font-weight: 600;
+    border-radius: 8px;
+}
+
+/* Better spacing for mobile forms */
+@media (max-width: 768px) {
+    .stNumberInput > div > div > input {
+        font-size: 16px; /* Prevents zoom on iOS */
+    }
+    .stTextInput > div > div > input {
+        font-size: 16px;
+    }
+}
 </style>
 """, unsafe_allow_html=True)
+
+# Validation functions
+def validate_inputs(precio_compra, alquiler_mes, entrada, tin, hipoteca_anos):
+    """Validate financial inputs and return error messages if any."""
+    errors = []
+    warnings = []
+    
+    # Critical validations (errors)
+    if entrada > precio_compra:
+        errors.append("⚠️ La entrada no puede ser mayor al precio de compra")
+    
+    if alquiler_mes * 12 < precio_compra * 0.03:
+        errors.append("⚠️ El alquiler anual parece muy bajo comparado con el precio (< 3% anual)")
+    
+    if alquiler_mes * 12 > precio_compra * 0.20:
+        errors.append("⚠️ El alquiler anual parece muy alto comparado con el precio (> 20% anual)")
+    
+    if tin < 0.5 or tin > 15:
+        errors.append("⚠️ El tipo de interés parece fuera del rango normal (0.5% - 15%)")
+    
+    if hipoteca_anos < 5 or hipoteca_anos > 40:
+        errors.append("⚠️ Los años de hipoteca están fuera del rango típico (5-40 años)")
+    
+    # Advisory validations (warnings)
+    if entrada < precio_compra * 0.15:
+        warnings.append("💡 Entrada menor al 15% puede requerir condiciones especiales del banco")
+    
+    if alquiler_mes * 12 < precio_compra * 0.05:
+        warnings.append("💡 Rentabilidad bruta muy baja (< 5% anual)")
+    
+    if tin > 5:
+        warnings.append("💡 Tipo de interés alto, considera negociar con otros bancos")
+    
+    return errors, warnings
+
+def safe_calculate_mortgage(capital_prestamo, tin, hipoteca_anos):
+    """Safely calculate mortgage payment with error handling."""
+    try:
+        if tin <= 0:
+            return capital_prestamo / (hipoteca_anos * 12) if hipoteca_anos > 0 else 0
+        
+        tipo_interes_mensual = tin / 100 / 12
+        total_cuotas = hipoteca_anos * 12
+        
+        if total_cuotas <= 0:
+            return 0
+            
+        cuota_mensual = (
+            capital_prestamo * tipo_interes_mensual / 
+            (1 - (1 + tipo_interes_mensual) ** (-total_cuotas))
+        )
+        return cuota_mensual
+    except (ZeroDivisionError, OverflowError, ValueError):
+        return 0
 
 def calcular_resultados(
     precio_compra, reformas, comision_agencia, alquiler_mes, entrada, tin,
@@ -21,12 +151,7 @@ def calcular_resultados(
     inversion_inicial = entrada + reformas + comision_agencia + gastos_compra + itp_iva
 
     capital_prestamo = precio_compra - entrada
-    tipo_interes_mensual = tin / 100 / 12
-    total_cuotas = hipoteca_anos * 12
-    cuota_mensual = (
-        capital_prestamo * tipo_interes_mensual / (1 - (1 + tipo_interes_mensual) ** (-total_cuotas))
-        if tin > 0 else capital_prestamo / total_cuotas
-    )
+    cuota_mensual = safe_calculate_mortgage(capital_prestamo, tin, hipoteca_anos)
     cuota_hipoteca_anual = cuota_mensual * 12
 
     ingresos_anuales = alquiler_mes * 12
@@ -92,8 +217,38 @@ def calcular_resultados(
         "rentabilidad_neta_real": rentabilidad_neta_real
     }
 
+# Initialize session state
 if "step" not in st.session_state:
     st.session_state.step = 1
+if "saved_scenarios" not in st.session_state:
+    st.session_state.saved_scenarios = {}
+if "current_scenario_name" not in st.session_state:
+    st.session_state.current_scenario_name = ""
+
+# Data persistence functions
+def save_scenario(name, data):
+    """Save current scenario to session state."""
+    st.session_state.saved_scenarios[name] = {
+        "data": data,
+        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    }
+    st.success(f"✅ Escenario '{name}' guardado correctamente")
+
+def load_scenario(name):
+    """Load scenario from session state."""
+    if name in st.session_state.saved_scenarios:
+        return st.session_state.saved_scenarios[name]["data"]
+    return None
+
+def delete_scenario(name):
+    """Delete scenario from session state."""
+    if name in st.session_state.saved_scenarios:
+        del st.session_state.saved_scenarios[name]
+        st.success(f"🗑️ Escenario '{name}' eliminado")
+
+def export_scenarios_json():
+    """Export all scenarios as JSON."""
+    return json.dumps(st.session_state.saved_scenarios, indent=2, ensure_ascii=False)
 
 def format_number(val):
     # Formatea siempre con separador de miles y sin decimales
@@ -132,35 +287,83 @@ Esta herramienta te ayuda a analizar la rentabilidad y el cashflow de invertir e
 
 elif st.session_state.step == 2:
     st.markdown("<div class='step-header'>Introduce los datos de tu inversión</div>", unsafe_allow_html=True)
+    
+    # Scenario management section
+    with st.expander("📁 Gestión de escenarios", expanded=False):
+        col1, col2 = st.columns([2, 1])
+        with col1:
+            scenario_name = st.text_input("Nombre del escenario", value=st.session_state.current_scenario_name, placeholder="Ej: Piso Centro Madrid")
+        with col2:
+            if st.button("💾 Guardar escenario"):
+                if scenario_name.strip():
+                    # We'll save after collecting the data
+                    st.session_state.current_scenario_name = scenario_name
+                else:
+                    st.error("Por favor, introduce un nombre para el escenario")
+        
+        if st.session_state.saved_scenarios:
+            st.markdown("**Escenarios guardados:**")
+            for name, scenario in st.session_state.saved_scenarios.items():
+                col1, col2, col3 = st.columns([3, 1, 1])
+                with col1:
+                    st.text(f"{name} ({scenario['timestamp']})")
+                with col2:
+                    if st.button("📂", key=f"load_{name}", help="Cargar escenario"):
+                        loaded_data = load_scenario(name)
+                        if loaded_data:
+                            # Load data into session state for use below
+                            st.session_state.loaded_data = loaded_data
+                            st.session_state.current_scenario_name = name
+                            st.rerun()
+                with col3:
+                    if st.button("🗑️", key=f"delete_{name}", help="Eliminar escenario"):
+                        delete_scenario(name)
+                        st.rerun()
+            
+            st.download_button(
+                "📥 Exportar todos los escenarios (JSON)",
+                data=export_scenarios_json(),
+                file_name=f"escenarios_inmuebles_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
+                mime="application/json"
+            )
 
+    # Load default values (either from loaded scenario or defaults)
+    loaded_data = getattr(st.session_state, 'loaded_data', {})
+    
     # BLOQUE 1: DATOS DE COMPRA
     st.markdown("<div class='block-box'>", unsafe_allow_html=True)
     st.markdown("<span class='block-title'>1. Datos de compra</span>", unsafe_allow_html=True)
     col1, col2 = st.columns(2)
     with col1:
         precio_compra = st.number_input(
-            "Precio de compra (€)", min_value=50000, max_value=1000000, value=200000,
+            "Precio de compra (€)", min_value=50000, max_value=1000000, 
+            value=loaded_data.get('precio_compra', 200000),
             help="Precio total de compra del piso (sin reformas)."
         )
         reformas = st.number_input(
-            "Reformas/arreglos (€)", min_value=0, max_value=500000, value=15000,
+            "Reformas/arreglos (€)", min_value=0, max_value=500000, 
+            value=loaded_data.get('reformas', 15000),
             help="Coste estimado de reformas necesarias para alquilar."
         )
 
     with col2:
         comision_agencia = st.number_input(
-            "Comisión agencia (€)", min_value=0, max_value=100000, value=0,
+            "Comisión agencia (€)", min_value=0, max_value=100000, 
+            value=loaded_data.get('comision_agencia', 0),
             help="Coste pagado a la agencia, si existe."
         )
         alquiler_mes = st.number_input(
-            "Renta mensual (€)", min_value=200, max_value=5000, value=1100,
+            "Renta mensual (€)", min_value=200, max_value=5000, 
+            value=loaded_data.get('alquiler_mes', 1100),
             help="Alquiler mensual estimado tras la reforma."
         )
     
+    default_alquiler_tipo = loaded_data.get('aplica_reduccion_60', True)
     alquiler_tipo = st.radio(
-    "¿El alquiler será de la vivienda entera o solo habitaciones?",
-    ["Vivienda entera de residencia habitual", "Habitaciones o no residencia habitual"],
-    help="Si alquilas solo habitaciones, la reducción del 60% en el IRPF no es aplicable por ley."
+        "¿El alquiler será de la vivienda entera o solo habitaciones?",
+        ["Vivienda entera de residencia habitual", "Habitaciones o no residencia habitual"],
+        index=0 if default_alquiler_tipo else 1,
+        help="Si alquilas solo habitaciones, la reducción del 60% en el IRPF no es aplicable por ley."
     )
     aplica_reduccion_60 = alquiler_tipo == "Vivienda entera de residencia habitual"
     st.markdown("</div>", unsafe_allow_html=True)
@@ -171,18 +374,31 @@ elif st.session_state.step == 2:
     col1, col2 = st.columns(2)
     with col1:
         entrada = st.number_input(
-            "Entrada pagada (€)", min_value=0, max_value=1000000, value=40000,
+            "Entrada pagada (€)", min_value=0, max_value=1000000, 
+            value=loaded_data.get('entrada', 40000),
             help="Dinero que pagas al principio (normalmente 20% del precio de compra)."
         )
         tin = st.number_input(
-            "TIN hipotecario (%)", min_value=0.1, max_value=10.0, value=2.8, step=0.01,
+            "TIN hipotecario (%)", min_value=0.1, max_value=10.0, 
+            value=loaded_data.get('tin', 2.8), step=0.01,
             help="Tipo de interés nominal anual de la hipoteca. Según el BDE, en 2025 está alrededor del 2.8% pero puede variar según perfil y banco."
         )
     with col2:
         hipoteca_anos = st.number_input(
-            "Años de hipoteca", min_value=5, max_value=40, value=25, step=1,
+            "Años de hipoteca", min_value=5, max_value=40, 
+            value=loaded_data.get('hipoteca_anos', 25), step=1,
             help="Duración del préstamo hipotecario en años (lo habitual son entre 20 y 30)."
         )
+        
+        # Validation section
+        errors, warnings = validate_inputs(precio_compra, alquiler_mes, entrada, tin, hipoteca_anos)
+        
+        if errors:
+            for error in errors:
+                st.error(error)
+        if warnings:
+            for warning in warnings:
+                st.warning(warning)
         if precio_compra > 0 and tin > 0 and hipoteca_anos > 0 and entrada < precio_compra:
             capital_prestamo = precio_compra - entrada
             tipo_interes_mensual = tin / 100 / 12
@@ -210,13 +426,15 @@ elif st.session_state.step == 2:
     col1, col2 = st.columns(2)
     with col1:
         gastos_compra_pct = st.number_input(
-            "Gastos notario, registro, tasación, gestoría (% sobre compra)", min_value=0.5, max_value=4.0, value=2.0, step=0.1,
+            "Gastos notario, registro, tasación, gestoría (% sobre compra)", min_value=0.5, max_value=4.0, 
+            value=loaded_data.get('gastos_compra', 0) / precio_compra * 100 if loaded_data.get('gastos_compra', 0) > 0 else 2.0, step=0.1,
             help="Normalmente entre 1% y 2% del precio de compra total."
         )
         gastos_compra = precio_compra * gastos_compra_pct / 100
     with col2:
         itp_iva_pct = st.number_input(
-            "ITP o IVA (% sobre compra)", min_value=4.0, max_value=15.0, value=8.0, step=0.1,
+            "ITP o IVA (% sobre compra)", min_value=4.0, max_value=15.0, 
+            value=loaded_data.get('itp_iva', 0) / precio_compra * 100 if loaded_data.get('itp_iva', 0) > 0 else 8.0, step=0.1,
             help="Porcentaje de impuesto aplicable (ITP en segunda mano o IVA en obra nueva)."
         )
         itp_iva = precio_compra * itp_iva_pct / 100
@@ -228,12 +446,14 @@ elif st.session_state.step == 2:
     col1, col2 = st.columns(2)
     with col1:
         irpf_marginal = st.number_input(
-            "Tipo marginal IRPF (%)", min_value=0.0, max_value=55.0, value=25.0,
+            "Tipo marginal IRPF (%)", min_value=0.0, max_value=55.0, 
+            value=loaded_data.get('irpf_marginal', 25.0),
             help="Tu tipo marginal de IRPF. Consulta el tramo que te corresponde."
         )
     with col2:
         valor_construccion_pct = st.number_input(
-            "Valor construcción (% sobre compra)", min_value=10, max_value=90, value=30,
+            "Valor construcción (% sobre compra)", min_value=10, max_value=90, 
+            value=loaded_data.get('valor_construccion_pct', 30),
             help="Por ley solo puedes deducir como amortización el 3% anual de la parte atribuida a construcción (habitual: 30%)."
         )
     st.markdown("</div>", unsafe_allow_html=True)
@@ -246,64 +466,123 @@ elif st.session_state.step == 2:
     col1, col2 = st.columns(2)
     with col1:
         seguro_impago = st.number_input(
-            "Seguro de impago (€)", min_value=0, max_value=5000, value=230,
+            "Seguro de impago (€)", min_value=0, max_value=5000, 
+            value=loaded_data.get('seguro_impago', 230),
             help="Seguro que cubre el impago de la renta por parte del inquilino."
         )
         impuesto_basuras = st.number_input(
-            "Impuesto de basuras (€)", min_value=0, max_value=1000, value=100,
+            "Impuesto de basuras (€)", min_value=0, max_value=1000, 
+            value=loaded_data.get('impuesto_basuras', 100),
             help="Tasa municipal por la recogida de residuos urbanos."
         )
         seguro_hogar = st.number_input(
-            "Seguro de hogar (€)", min_value=0, max_value=2000, value=200,
+            "Seguro de hogar (€)", min_value=0, max_value=2000, 
+            value=loaded_data.get('seguro_hogar', 200),
             help="Seguro de daños sobre la vivienda alquilada."
         )
         seguro_vida = st.number_input(
-            "Seguro de vida (€)", min_value=0, max_value=2000, value=100,
+            "Seguro de vida (€)", min_value=0, max_value=2000, 
+            value=loaded_data.get('seguro_vida', 100),
             help="Seguro de vida vinculado a la hipoteca (opcional o según banco)."
         )
     with col2:
         comunidad = st.number_input(
-            "Gastos de comunidad (€)", min_value=0, max_value=3000, value=240,
+            "Gastos de comunidad (€)", min_value=0, max_value=3000, 
+            value=loaded_data.get('comunidad', 240),
             help="Cuota anual de la comunidad de vecinos."
         )
         ibi = st.number_input(
-            "IBI (€)", min_value=0, max_value=3000, value=200,
+            "IBI (€)", min_value=0, max_value=3000, 
+            value=loaded_data.get('ibi', 200),
             help="Impuesto sobre Bienes Inmuebles municipal."
         )
         mantenimiento = st.number_input(
-            "Mantenimiento y pequeñas reparaciones (€)", min_value=0, max_value=3000, value=480,
+            "Mantenimiento y pequeñas reparaciones (€)", min_value=0, max_value=3000, 
+            value=loaded_data.get('mantenimiento', 480),
             help="Estimación de averías, fontanería, pintura, etc."
         )
         vacio = st.number_input(
-            "Periodos vacíos (%)", min_value=0.0, max_value=100.0, value=5.0, step=0.5,
+            "Periodos vacíos (%)", min_value=0.0, max_value=100.0, 
+            value=loaded_data.get('vacio', 5.0), step=0.5,
             help="Porcentaje estimado de meses que el piso estará vacío al año (por rotación de inquilino, reformas, etc)."
         )
     st.markdown("</div>", unsafe_allow_html=True)
 
-    if st.button("Calcular resultados ➡️"):
-        st.session_state.inputs = {
-            "aplica_reduccion_60": aplica_reduccion_60,
-            "precio_compra": precio_compra,
-            "reformas": reformas,
-            "comision_agencia": comision_agencia,
-            "alquiler_mes": alquiler_mes,
-            "entrada": entrada,
-            "tin": tin,
-            "hipoteca_anos": hipoteca_anos,
-            "gastos_compra": gastos_compra,
-            "itp_iva": itp_iva,
-            "irpf_marginal": irpf_marginal,
-            "valor_construccion_pct": valor_construccion_pct,
-            "seguro_impago": seguro_impago,
-            "impuesto_basuras": impuesto_basuras,
-            "seguro_hogar": seguro_hogar,
-            "seguro_vida": seguro_vida,
-            "comunidad": comunidad,
-            "ibi": ibi,
-            "mantenimiento": mantenimiento,
-            "vacio": vacio
-        }
-        cambiar_paso(3)
+    # Clear loaded data after use
+    if hasattr(st.session_state, 'loaded_data'):
+        del st.session_state.loaded_data
+    
+    col1, col2 = st.columns([1, 1])
+    with col1:
+        if st.button("Calcular resultados ➡️", type="primary"):
+            # Final validation before calculation
+            errors, _ = validate_inputs(precio_compra, alquiler_mes, entrada, tin, hipoteca_anos)
+            
+            if errors:
+                st.error("❌ Por favor, corrige los errores antes de continuar:")
+                for error in errors:
+                    st.error(error)
+            else:
+                # Prepare data for storage
+                current_inputs = {
+                    "aplica_reduccion_60": aplica_reduccion_60,
+                    "precio_compra": precio_compra,
+                    "reformas": reformas,
+                    "comision_agencia": comision_agencia,
+                    "alquiler_mes": alquiler_mes,
+                    "entrada": entrada,
+                    "tin": tin,
+                    "hipoteca_anos": hipoteca_anos,
+                    "gastos_compra": gastos_compra,
+                    "itp_iva": itp_iva,
+                    "irpf_marginal": irpf_marginal,
+                    "valor_construccion_pct": valor_construccion_pct,
+                    "seguro_impago": seguro_impago,
+                    "impuesto_basuras": impuesto_basuras,
+                    "seguro_hogar": seguro_hogar,
+                    "seguro_vida": seguro_vida,
+                    "comunidad": comunidad,
+                    "ibi": ibi,
+                    "mantenimiento": mantenimiento,
+                    "vacio": vacio
+                }
+                
+                st.session_state.inputs = current_inputs
+                
+                # Auto-save scenario if name is provided
+                if st.session_state.current_scenario_name.strip():
+                    save_scenario(st.session_state.current_scenario_name, current_inputs)
+                
+                cambiar_paso(3)
+    
+    with col2:
+        if st.button("💾 Guardar y continuar"):
+            if st.session_state.current_scenario_name.strip():
+                current_inputs = {
+                    "aplica_reduccion_60": aplica_reduccion_60,
+                    "precio_compra": precio_compra,
+                    "reformas": reformas,
+                    "comision_agencia": comision_agencia,
+                    "alquiler_mes": alquiler_mes,
+                    "entrada": entrada,
+                    "tin": tin,
+                    "hipoteca_anos": hipoteca_anos,
+                    "gastos_compra": gastos_compra,
+                    "itp_iva": itp_iva,
+                    "irpf_marginal": irpf_marginal,
+                    "valor_construccion_pct": valor_construccion_pct,
+                    "seguro_impago": seguro_impago,
+                    "impuesto_basuras": impuesto_basuras,
+                    "seguro_hogar": seguro_hogar,
+                    "seguro_vida": seguro_vida,
+                    "comunidad": comunidad,
+                    "ibi": ibi,
+                    "mantenimiento": mantenimiento,
+                    "vacio": vacio
+                }
+                save_scenario(st.session_state.current_scenario_name, current_inputs)
+            else:
+                st.error("Por favor, introduce un nombre para el escenario")
 
     if st.button("⬅️ Volver", key="input_back"):
         cambiar_paso(1)
@@ -407,8 +686,98 @@ elif st.session_state.step == 3:
 </div>
 """, unsafe_allow_html=True)
 
+    # Comparison tool
+    st.markdown("---")
+    st.markdown("### 📊 Herramientas adicionales")
+    
+    with st.expander("🔍 Comparar con otros escenarios", expanded=False):
+        if len(st.session_state.saved_scenarios) > 1:
+            scenario_names = list(st.session_state.saved_scenarios.keys())
+            selected_scenarios = st.multiselect(
+                "Selecciona escenarios para comparar:",
+                scenario_names,
+                default=scenario_names[:min(3, len(scenario_names))]
+            )
+            
+            if len(selected_scenarios) > 1:
+                comparison_data = []
+                for scenario_name in selected_scenarios:
+                    scenario_data = st.session_state.saved_scenarios[scenario_name]["data"]
+                    scenario_results = calcular_resultados(
+                        scenario_data['precio_compra'], scenario_data['reformas'], 
+                        scenario_data['comision_agencia'], scenario_data['alquiler_mes'], 
+                        scenario_data['entrada'], scenario_data['tin'], scenario_data['hipoteca_anos'], 
+                        scenario_data['irpf_marginal'], scenario_data['valor_construccion_pct'], 
+                        scenario_data['gastos_compra'], scenario_data['itp_iva'],
+                        scenario_data['seguro_impago'], scenario_data['impuesto_basuras'], 
+                        scenario_data['seguro_hogar'], scenario_data['seguro_vida'],
+                        scenario_data['comunidad'], scenario_data['ibi'], scenario_data['mantenimiento'], 
+                        scenario_data['vacio'], scenario_data['aplica_reduccion_60']
+                    )
+                    
+                    comparison_data.append({
+                        "Escenario": scenario_name,
+                        "Precio compra": f"{scenario_data['precio_compra']:,.0f} €",
+                        "Alquiler mensual": f"{scenario_data['alquiler_mes']:,.0f} €",
+                        "Inversión inicial": f"{scenario_results['inversion_inicial']:,.0f} €",
+                        "Beneficio anual": f"{scenario_results['beneficio_DI']:,.0f} €",
+                        "Rentabilidad (%)": f"{scenario_results['rentabilidad_neta_real']:.2f}%",
+                        "Cuota hipoteca": f"{scenario_results['cuota_mensual']:,.0f} €/mes"
+                    })
+                
+                comparison_df = pd.DataFrame(comparison_data)
+                st.dataframe(comparison_df, use_container_width=True)
+                
+                # Download comparison as CSV
+                csv = comparison_df.to_csv(index=False).encode('utf-8')
+                st.download_button(
+                    "📥 Descargar comparación (CSV)",
+                    csv,
+                    f"comparacion_escenarios_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                    "text/csv"
+                )
+        else:
+            st.info("Guarda más escenarios para poder compararlos")
+    
+    with st.expander("📈 Análisis de sensibilidad", expanded=False):
+        st.markdown("**¿Cómo cambiaría la rentabilidad si...?**")
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            st.markdown("**Precio de compra:**")
+            for change in [-10, -5, 5, 10]:
+                new_price = d['precio_compra'] * (1 + change/100)
+                temp_res = calcular_resultados(
+                    new_price, d['reformas'], d['comision_agencia'], d['alquiler_mes'], d['entrada'],
+                    d['tin'], d['hipoteca_anos'], d['irpf_marginal'], d['valor_construccion_pct'], 
+                    d['gastos_compra'] * (1 + change/100), d['itp_iva'] * (1 + change/100),
+                    d['seguro_impago'], d['impuesto_basuras'], d['seguro_hogar'], d['seguro_vida'],
+                    d['comunidad'], d['ibi'], d['mantenimiento'], d['vacio'], aplica_reduccion_60
+                )
+                color = "green" if temp_res["rentabilidad_neta_real"] > rentabilidad_neta else "red"
+                st.markdown(f"<span style='color:{color}'>{change:+d}%: {temp_res['rentabilidad_neta_real']:.2f}%</span>", unsafe_allow_html=True)
+        
+        with col2:
+            st.markdown("**Alquiler mensual:**")
+            for change in [-10, -5, 5, 10]:
+                new_rent = d['alquiler_mes'] * (1 + change/100)
+                temp_res = calcular_resultados(
+                    d['precio_compra'], d['reformas'], d['comision_agencia'], new_rent, d['entrada'],
+                    d['tin'], d['hipoteca_anos'], d['irpf_marginal'], d['valor_construccion_pct'], 
+                    d['gastos_compra'], d['itp_iva'], d['seguro_impago'], d['impuesto_basuras'], 
+                    d['seguro_hogar'], d['seguro_vida'], d['comunidad'], d['ibi'], d['mantenimiento'], 
+                    d['vacio'], aplica_reduccion_60
+                )
+                color = "green" if temp_res["rentabilidad_neta_real"] > rentabilidad_neta else "red"
+                st.markdown(f"<span style='color:{color}'>{change:+d}%: {temp_res['rentabilidad_neta_real']:.2f}%</span>", unsafe_allow_html=True)
+
     st.markdown("---")
     st.info("Puedes volver atrás y ajustar cualquier dato para analizar otros escenarios.")
 
-    if st.button("⬅️ Analizar otro escenario", key="restart"):
-        cambiar_paso(2)
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("⬅️ Analizar otro escenario", key="restart"):
+            cambiar_paso(2)
+    with col2:
+        if st.button("🏠 Volver al inicio", key="home"):
+            cambiar_paso(1)
