@@ -120,7 +120,7 @@ def request_local_scenarios():
 
 def load_scenarios_from_url():
     """Load scenarios from the URL query parameter if present."""
-    params = st.experimental_get_query_params()
+    params = st.query_params()
     if "scenarios_b64" in params:
         b64 = params["scenarios_b64"][0]
         if b64:
@@ -132,7 +132,7 @@ def load_scenarios_from_url():
         else:
             data = {}
 
-        st.experimental_set_query_params()
+        st.query_params()
         return data, True
 
     return {}, False
