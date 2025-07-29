@@ -5,6 +5,10 @@ from datetime import datetime
 import pandas as pd
 import os
 import tempfile
+import plotly.graph_objects as go
+import plotly.express as px
+from plotly.subplots import make_subplots
+import numpy as np
 
 st.set_page_config(page_title="Calculadora de inversión inmobiliaria", layout="centered")
 
@@ -248,6 +252,214 @@ def calcular_resultados(
         "beneficio_DI": beneficio_DI,
         "rentabilidad_neta_real": rentabilidad_neta_real
     }
+
+# Chart creation functions
+def create_profit_over_time_chart(data, results):
+    """Create a chart showing annual profit over the mortgage period"""
+    years = list(range(1, data['hipoteca_anos'] + 1))
+    annual_profit = [results['beneficio_DI']] * len(years)
+    cumulative_profit = np.cumsum(annual_profit)
+    
+    fig = make_subplots(
+        rows=2, cols=1,
+        subplot_titles=('Beneficio Anual', 'Beneficio Acumulado'),
+        vertical_spacing=0.1
+    )
+    
+    # Annual profit
+    fig.add_trace(
+        go.Scatter(
+            x=years, y=annual_profit,
+            mode='lines+markers',
+            name='Beneficio Anual',
+            line=dict(color='#2E8B57', width=3),
+            marker=dict(size=6)
+        ),
+        row=1, col=1
+    )
+    
+    # Cumulative profit
+    fig.add_trace(
+        go.Scatter(
+            x=years, y=cumulative_profit,
+            mode='lines+markers',
+            name='Beneficio Acumulado',
+            line=dict(color='#1E90FF', width=3),
+            marker=dict(size=6),
+            fill='tonexty'
+        ),
+        row=2, col=1
+    )
+    
+    fig.update_layout(
+        title="📈 Evolución de Beneficios a lo largo del tiempo",
+        height=500,
+        showlegend=False,
+        template="plotly_white"
+    )
+    
+    fig.update_yaxes(title_text="Euros (€)", tickformat=",")
+    fig.update_xaxes(title_text="Años", row=2, col=1)
+    
+    return fig
+
+def create_mortgage_breakdown_chart(data):
+    """Create a chart showing mortgage payment breakdown over time"""
+    capital_prestamo = data['precio_compra'] - data['entrada']
+    monthly_rate = data['tin'] / 100 / 12
+    total_payments = data['hipoteca_anos'] * 12
+    monthly_payment = safe_calculate_mortgage(capital_prestamo, data['tin'], data['hipoteca_anos'])
+    
+    years = []
+    principal_payments = []
+    interest_payments = []
+    remaining_balance = capital_prestamo
+    
+    for year in range(1, data['hipoteca_anos'] + 1):
+        annual_principal = 0
+        annual_interest = 0
+        
+        for month in range(12):
+            if remaining_balance > 0:
+                interest_payment = remaining_balance * monthly_rate
+                principal_payment = monthly_payment - interest_payment
+                
+                annual_interest += interest_payment
+                annual_principal += principal_payment
+                remaining_balance -= principal_payment
+        
+        years.append(year)
+        principal_payments.append(annual_principal)
+        interest_payments.append(annual_interest)
+    
+    fig = go.Figure()
+    
+    fig.add_trace(go.Bar(
+        x=years,
+        y=interest_payments,
+        name='Intereses',
+        marker_color='#FF6B6B'
+    ))
+    
+    fig.add_trace(go.Bar(
+        x=years,
+        y=principal_payments,
+        name='Capital',
+        marker_color='#4ECDC4'
+    ))
+    
+    fig.update_layout(
+        title="🏦 Desglose de Pagos de Hipoteca (Capital vs Intereses)",
+        xaxis_title="Años",
+        yaxis_title="Euros (€)",
+        barmode='stack',
+        template="plotly_white",
+        height=400
+    )
+    
+    fig.update_yaxes(tickformat=",")
+    
+    return fig
+
+def create_net_worth_chart(data, results):
+    """Create a chart showing net worth evolution over time"""
+    years = list(range(0, data['hipoteca_anos'] + 1))
+    
+    # Calculate property appreciation (assuming 2% annual)
+    property_appreciation_rate = 0.02
+    property_values = [data['precio_compra'] * (1 + property_appreciation_rate) ** year for year in years]
+    
+    # Calculate mortgage balance
+    capital_prestamo = data['precio_compra'] - data['entrada']
+    monthly_rate = data['tin'] / 100 / 12
+    monthly_payment = safe_calculate_mortgage(capital_prestamo, data['tin'], data['hipoteca_anos'])
+    
+    mortgage_balances = [capital_prestamo]
+    remaining_balance = capital_prestamo
+    
+    for year in range(1, data['hipoteca_anos'] + 1):
+        for month in range(12):
+            if remaining_balance > 0:
+                interest_payment = remaining_balance * monthly_rate
+                principal_payment = monthly_payment - interest_payment
+                remaining_balance -= principal_payment
+        mortgage_balances.append(max(0, remaining_balance))
+    
+    # Calculate net worth (property value - mortgage balance)
+    net_worth = [prop_val - mortgage_bal for prop_val, mortgage_bal in zip(property_values, mortgage_balances)]
+    
+    fig = go.Figure()
+    
+    fig.add_trace(go.Scatter(
+        x=years, y=property_values,
+        mode='lines+markers',
+        name='Valor Propiedad',
+        line=dict(color='#32CD32', width=3),
+        marker=dict(size=6)
+    ))
+    
+    fig.add_trace(go.Scatter(
+        x=years, y=mortgage_balances,
+        mode='lines+markers',
+        name='Deuda Hipoteca',
+        line=dict(color='#FF4500', width=3),
+        marker=dict(size=6)
+    ))
+    
+    fig.add_trace(go.Scatter(
+        x=years, y=net_worth,
+        mode='lines+markers',
+        name='Patrimonio Neto',
+        line=dict(color='#1E90FF', width=4),
+        marker=dict(size=8),
+        fill='tonexty'
+    ))
+    
+    fig.update_layout(
+        title="💰 Evolución del Patrimonio Neto",
+        xaxis_title="Años",
+        yaxis_title="Euros (€)",
+        template="plotly_white",
+        height=500,
+        hovermode='x unified'
+    )
+    
+    fig.update_yaxes(tickformat=",")
+    
+    return fig
+
+def create_expense_breakdown_chart(results):
+    """Create a pie chart showing expense breakdown"""
+    expenses = results['gastos_dict']
+    
+    # Filter out zero expenses and prepare data
+    non_zero_expenses = [(name, value) for name, value in expenses if value > 0]
+    
+    if not non_zero_expenses:
+        return None
+    
+    names, values = zip(*non_zero_expenses)
+    
+    # Custom colors for different expense types
+    colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7', '#DDA0DD', '#98D8C8', '#F7DC6F', '#BB8FCE']
+    
+    fig = go.Figure(data=[go.Pie(
+        labels=names,
+        values=values,
+        hole=0.4,
+        marker=dict(colors=colors[:len(names)]),
+        textinfo='label+percent',
+        textposition='outside'
+    )])
+    
+    fig.update_layout(
+        title="📊 Desglose de Gastos Anuales",
+        template="plotly_white",
+        height=500,
+        showlegend=True
+    )
+    
+    return fig
 
 # Initialize session state
 if "step" not in st.session_state:
@@ -766,6 +978,72 @@ elif st.session_state.step == 3:
 <b>Rentabilidad neta sobre la inversión inicial:</b> {rentabilidad_neta:.2f} %
 </div>
 """, unsafe_allow_html=True)
+
+    # Charts section
+    st.markdown("---")
+    st.markdown("### 📊 Análisis Visual")
+    
+    # Create tabs for different charts
+    tab1, tab2, tab3, tab4 = st.tabs(["💰 Patrimonio Neto", "📈 Beneficios", "🏦 Hipoteca", "📊 Gastos"])
+    
+    with tab1:
+        st.markdown("**Evolución del patrimonio neto a lo largo del tiempo**")
+        st.info("💡 Asume una revalorización del inmueble del 2% anual")
+        try:
+            net_worth_chart = create_net_worth_chart(d, res)
+            st.plotly_chart(net_worth_chart, use_container_width=True)
+        except Exception as e:
+            st.error(f"Error creando gráfico de patrimonio: {e}")
+    
+    with tab2:
+        st.markdown("**Beneficios anuales y acumulados durante el período de hipoteca**")
+        try:
+            profit_chart = create_profit_over_time_chart(d, res)
+            st.plotly_chart(profit_chart, use_container_width=True)
+            
+            # Show key metrics
+            total_years = d['hipoteca_anos']
+            total_profit = res['beneficio_DI'] * total_years
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("Beneficio Total", f"{total_profit:,.0f} €")
+            with col2:
+                st.metric("Promedio Anual", f"{res['beneficio_DI']:,.0f} €")
+            with col3:
+                roi_total = (total_profit / res['inversion_inicial']) * 100
+                st.metric("ROI Total", f"{roi_total:.1f}%")
+        except Exception as e:
+            st.error(f"Error creando gráfico de beneficios: {e}")
+    
+    with tab3:
+        st.markdown("**Desglose de pagos de hipoteca: capital vs intereses**")
+        try:
+            mortgage_chart = create_mortgage_breakdown_chart(d)
+            st.plotly_chart(mortgage_chart, use_container_width=True)
+            
+            # Show mortgage totals
+            monthly_payment = safe_calculate_mortgage(d['precio_compra'] - d['entrada'], d['tin'], d['hipoteca_anos'])
+            total_payments = monthly_payment * 12 * d['hipoteca_anos']
+            total_interest = total_payments - (d['precio_compra'] - d['entrada'])
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                st.metric("Total Pagado", f"{total_payments:,.0f} €")
+            with col2:
+                st.metric("Total Intereses", f"{total_interest:,.0f} €")
+        except Exception as e:
+            st.error(f"Error creando gráfico de hipoteca: {e}")
+    
+    with tab4:
+        st.markdown("**Distribución de gastos anuales**")
+        try:
+            expense_chart = create_expense_breakdown_chart(res)
+            if expense_chart:
+                st.plotly_chart(expense_chart, use_container_width=True)
+            else:
+                st.info("No hay gastos para mostrar en el gráfico")
+        except Exception as e:
+            st.error(f"Error creando gráfico de gastos: {e}")
 
     # Comparison tool
     st.markdown("---")
