@@ -519,6 +519,10 @@ def cambiar_paso(paso):
     if paso == 2 and st.session_state.get('step') == 3:
         reset_for_new_scenario()
     
+    # Add a flag to scroll to top when going to results
+    if paso == 3:
+        st.session_state.scroll_to_top = True
+    
     st.rerun()
 
 def reset_for_new_scenario():
@@ -882,6 +886,16 @@ elif st.session_state.step == 2:
 
 
 elif st.session_state.step == 3:
+    # Add JavaScript to scroll to top when results page loads
+    if st.session_state.get('scroll_to_top', False):
+        st.markdown("""
+        <script>
+        window.parent.document.documentElement.scrollTop = 0;
+        window.parent.document.body.scrollTop = 0;
+        </script>
+        """, unsafe_allow_html=True)
+        st.session_state.scroll_to_top = False
+    
     d = st.session_state.inputs
     aplica_reduccion_60 = d['aplica_reduccion_60']
 
@@ -1059,6 +1073,40 @@ elif st.session_state.step == 3:
             )
             
             if len(selected_scenarios) > 1:
+                # Option to select comparison variables
+                st.markdown("**Selecciona las variables a comparar:**")
+                
+                all_variables = {
+                    "Básicas": ["Precio compra", "Alquiler mensual", "Inversión inicial", "Beneficio anual", "Rentabilidad (%)"],
+                    "Financieras": ["Cuota hipoteca", "TIN (%)", "Años hipoteca", "Entrada", "Cash Flow mensual"],
+                    "Gastos": ["Gastos totales", "Gastos/Ingreso (%)", "IBI", "Comunidad", "Mantenimiento"],
+                    "Análisis": ["ROI 5 años", "Payback (años)", "Rentabilidad bruta", "Ratio deuda/valor"]
+                }
+                
+                col1, col2, col3, col4 = st.columns(4)
+                selected_vars = {}
+                
+                with col1:
+                    st.markdown("**Básicas**")
+                    for var in all_variables["Básicas"]:
+                        selected_vars[var] = st.checkbox(var, value=True if var in ["Precio compra", "Rentabilidad (%)", "Beneficio anual"] else False, key=f"basic_{var}")
+                
+                with col2:
+                    st.markdown("**Financieras**")
+                    for var in all_variables["Financieras"]:
+                        selected_vars[var] = st.checkbox(var, value=True if var == "Cuota hipoteca" else False, key=f"fin_{var}")
+                
+                with col3:
+                    st.markdown("**Gastos**")
+                    for var in all_variables["Gastos"]:
+                        selected_vars[var] = st.checkbox(var, value=False, key=f"exp_{var}")
+                
+                with col4:
+                    st.markdown("**Análisis**")
+                    for var in all_variables["Análisis"]:
+                        selected_vars[var] = st.checkbox(var, value=True if var == "ROI 5 años" else False, key=f"analysis_{var}")
+                
+                # Generate comparison data
                 comparison_data = []
                 for scenario_name in selected_scenarios:
                     scenario_data = st.session_state.saved_scenarios[scenario_name]["data"]
@@ -1074,27 +1122,97 @@ elif st.session_state.step == 3:
                         scenario_data['vacio'], scenario_data['aplica_reduccion_60']
                     )
                     
-                    comparison_data.append({
-                        "Escenario": scenario_name,
-                        "Precio compra": f"{scenario_data['precio_compra']:,.0f} €",
-                        "Alquiler mensual": f"{scenario_data['alquiler_mes']:,.0f} €",
-                        "Inversión inicial": f"{scenario_results['inversion_inicial']:,.0f} €",
-                        "Beneficio anual": f"{scenario_results['beneficio_DI']:,.0f} €",
-                        "Rentabilidad (%)": f"{scenario_results['rentabilidad_neta_real']:.2f}%",
-                        "Cuota hipoteca": f"{scenario_results['cuota_mensual']:,.0f} €/mes"
-                    })
+                    # Calculate additional metrics
+                    cash_flow_mensual = scenario_data['alquiler_mes'] - scenario_results['cuota_mensual'] - (scenario_results['gastos_recurrentes'] / 12)
+                    rentabilidad_bruta = (scenario_data['alquiler_mes'] * 12 / scenario_data['precio_compra']) * 100
+                    roi_5_anos = (scenario_results['beneficio_DI'] * 5 / scenario_results['inversion_inicial']) * 100
+                    payback_anos = scenario_results['inversion_inicial'] / scenario_results['beneficio_DI'] if scenario_results['beneficio_DI'] > 0 else float('inf')
+                    ratio_deuda_valor = ((scenario_data['precio_compra'] - scenario_data['entrada']) / scenario_data['precio_compra']) * 100
+                    gastos_ingreso_ratio = (scenario_results['gastos_anuales'] / scenario_results['ingresos_anuales']) * 100
+                    
+                    row_data = {"Escenario": scenario_name}
+                    
+                    # Add selected variables to comparison
+                    if selected_vars.get("Precio compra"):
+                        row_data["Precio compra"] = f"{scenario_data['precio_compra']:,.0f} €"
+                    if selected_vars.get("Alquiler mensual"):
+                        row_data["Alquiler mensual"] = f"{scenario_data['alquiler_mes']:,.0f} €"
+                    if selected_vars.get("Inversión inicial"):
+                        row_data["Inversión inicial"] = f"{scenario_results['inversion_inicial']:,.0f} €"
+                    if selected_vars.get("Beneficio anual"):
+                        row_data["Beneficio anual"] = f"{scenario_results['beneficio_DI']:,.0f} €"
+                    if selected_vars.get("Rentabilidad (%)"):
+                        row_data["Rentabilidad (%)"] = f"{scenario_results['rentabilidad_neta_real']:.2f}%"
+                    if selected_vars.get("Cuota hipoteca"):
+                        row_data["Cuota hipoteca"] = f"{scenario_results['cuota_mensual']:,.0f} €/mes"
+                    if selected_vars.get("TIN (%)"):
+                        row_data["TIN (%)"] = f"{scenario_data['tin']:.2f}%"
+                    if selected_vars.get("Años hipoteca"):
+                        row_data["Años hipoteca"] = f"{scenario_data['hipoteca_anos']} años"
+                    if selected_vars.get("Entrada"):
+                        row_data["Entrada"] = f"{scenario_data['entrada']:,.0f} €"
+                    if selected_vars.get("Cash Flow mensual"):
+                        row_data["Cash Flow mensual"] = f"{cash_flow_mensual:,.0f} €"
+                    if selected_vars.get("Gastos totales"):
+                        row_data["Gastos totales"] = f"{scenario_results['gastos_recurrentes']:,.0f} €"
+                    if selected_vars.get("Gastos/Ingreso (%)"):
+                        row_data["Gastos/Ingreso (%)"] = f"{gastos_ingreso_ratio:.1f}%"
+                    if selected_vars.get("IBI"):
+                        row_data["IBI"] = f"{scenario_data['ibi']:,.0f} €"
+                    if selected_vars.get("Comunidad"):
+                        row_data["Comunidad"] = f"{scenario_data['comunidad']:,.0f} €"
+                    if selected_vars.get("Mantenimiento"):
+                        row_data["Mantenimiento"] = f"{scenario_data['mantenimiento']:,.0f} €"
+                    if selected_vars.get("ROI 5 años"):
+                        row_data["ROI 5 años"] = f"{roi_5_anos:.1f}%"
+                    if selected_vars.get("Payback (años)"):
+                        payback_display = f"{payback_anos:.1f}" if payback_anos != float('inf') else "∞"
+                        row_data["Payback (años)"] = f"{payback_display} años"
+                    if selected_vars.get("Rentabilidad bruta"):
+                        row_data["Rentabilidad bruta"] = f"{rentabilidad_bruta:.2f}%"
+                    if selected_vars.get("Ratio deuda/valor"):
+                        row_data["Ratio deuda/valor"] = f"{ratio_deuda_valor:.1f}%"
+                    
+                    comparison_data.append(row_data)
                 
-                comparison_df = pd.DataFrame(comparison_data)
-                st.dataframe(comparison_df, use_container_width=True)
-                
-                # Download comparison as CSV
-                csv = comparison_df.to_csv(index=False).encode('utf-8')
-                st.download_button(
-                    "📥 Descargar comparación (CSV)",
-                    csv,
-                    f"comparacion_escenarios_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-                    "text/csv"
-                )
+                if comparison_data and len(comparison_data[0]) > 1:  # More than just scenario name
+                    comparison_df = pd.DataFrame(comparison_data)
+                    st.dataframe(comparison_df, use_container_width=True)
+                    
+                    # Add download button for the comparison
+                    csv = comparison_df.to_csv(index=False).encode('utf-8')
+                    st.download_button(
+                        "📥 Descargar comparación (CSV)",
+                        csv,
+                        f"comparacion_escenarios_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                        "text/csv"
+                    )
+                    
+                    # Add quick analysis
+                    if len(comparison_data) > 1:
+                        st.markdown("---")
+                        st.markdown("**📊 Análisis rápido:**")
+                        
+                        # Find best scenarios for key metrics
+                        if selected_vars.get("Rentabilidad (%)"):
+                            rentabilidades = [(row["Escenario"], float(row["Rentabilidad (%)"].replace("%", ""))) for row in comparison_data if "Rentabilidad (%)" in row]
+                            if rentabilidades:
+                                mejor_rentabilidad = max(rentabilidades, key=lambda x: x[1])
+                                st.success(f"🏆 **Mejor Rentabilidad**: {mejor_rentabilidad[0]} ({mejor_rentabilidad[1]:.2f}%)")
+                        
+                        if selected_vars.get("Cash Flow mensual"):
+                            cash_flows = [(row["Escenario"], float(row["Cash Flow mensual"].replace("€", "").replace(".", "").replace(",", "."))) for row in comparison_data if "Cash Flow mensual" in row]
+                            if cash_flows:
+                                mejor_cashflow = max(cash_flows, key=lambda x: x[1])
+                                st.info(f"💰 **Mejor Cash Flow**: {mejor_cashflow[0]} ({mejor_cashflow[1]:,.0f} €/mes)")
+                        
+                        if selected_vars.get("Inversión inicial"):
+                            inversiones = [(row["Escenario"], float(row["Inversión inicial"].replace("€", "").replace(".", "").replace(",", "."))) for row in comparison_data if "Inversión inicial" in row]
+                            if inversiones:
+                                menor_inversion = min(inversiones, key=lambda x: x[1])
+                                st.warning(f"💸 **Menor Inversión Inicial**: {menor_inversion[0]} ({menor_inversion[1]:,.0f} €)")
+                else:
+                    st.info("Selecciona al menos una variable para comparar")
         else:
             st.info("Guarda más escenarios para poder compararlos")
     
