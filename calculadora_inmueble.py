@@ -884,7 +884,16 @@ elif st.session_state.step == 2:
 
 elif st.session_state.step == 3:
     # Ensure the page loads at the start of the results
-    st.components.v1.html("<script>window.scrollTo(0, 0);</script>", height=0)
+    st.components.v1.html(
+        """
+        <script>
+        function scrollTop() { window.scrollTo(0, 0); }
+        window.addEventListener('load', scrollTop);
+        setTimeout(scrollTop, 100);
+        </script>
+        """,
+        height=0,
+    )
     st.markdown('<div id="top-of-results"></div>', unsafe_allow_html=True)
     
     d = st.session_state.inputs
