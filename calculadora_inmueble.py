@@ -3,8 +3,6 @@ import math
 import json
 from datetime import datetime
 import pandas as pd
-import os
-import tempfile
 import plotly.graph_objects as go
 import plotly.express as px
 from plotly.subplots import make_subplots
@@ -97,35 +95,8 @@ border-radius: 8px;
 </style>
 """, unsafe_allow_html=True)
 
-# Simplified persistence using file-based storage
-
-def get_scenarios_file_path():
-    """Get the path for scenarios file in temp directory"""
-    temp_dir = tempfile.gettempdir()
-    return os.path.join(temp_dir, 'calculadora_inmueble_scenarios.json')
-
-def load_scenarios_from_file():
-    """Load scenarios from file"""
-    try:
-        file_path = get_scenarios_file_path()
-        if os.path.exists(file_path):
-            with open(file_path, 'r', encoding='utf-8') as f:
-                scenarios = json.load(f)
-                return scenarios
-    except Exception as e:
-        st.error(f"Error loading scenarios: {e}")
-    return {}
-
-def save_scenarios_to_file(scenarios):
-    """Save scenarios to file"""
-    try:
-        file_path = get_scenarios_file_path()
-        with open(file_path, 'w', encoding='utf-8') as f:
-            json.dump(scenarios, f, ensure_ascii=False, indent=2)
-        return True
-    except Exception as e:
-        st.error(f"Error saving scenarios: {e}")
-        return False
+# Browser-local storage using Streamlit session state only
+# This ensures scenarios are saved locally per browser session and not shared across devices
 
 # Validation functions
 def validate_inputs(precio_compra, alquiler_mes, entrada, tin, hipoteca_anos):
@@ -463,10 +434,10 @@ def create_expense_breakdown_chart(results):
 
     return fig
 
-# Initialize session state
+# Initialize session state - all data stays in browser session (local to each device/browser)
 if "saved_scenarios" not in st.session_state:
-    # Load scenarios from file on first load
-    st.session_state.saved_scenarios = load_scenarios_from_file()
+    # Initialize empty scenarios dict - no file loading, purely browser-local
+    st.session_state.saved_scenarios = {}
 if "current_scenario_name" not in st.session_state:
     st.session_state.current_scenario_name = ""
 if "show_results" not in st.session_state:
@@ -476,20 +447,15 @@ if "inputs" not in st.session_state:
 
 # Data persistence functions
 def save_scenario(name, data):
-    """Save current scenario to both session state and file."""
+    """Save current scenario to browser session state only (local to this device/browser)."""
     scenario = {
         "data": data,
         "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     }
-
-    # Save to session state
+    
+    # Save only to session state - stays local to this browser
     st.session_state.saved_scenarios[name] = scenario
-
-    # Save all scenarios to file
-    if save_scenarios_to_file(st.session_state.saved_scenarios):
-        st.success(f"✅ Escenario '{name}' guardado correctamente")
-    else:
-        st.error(f"❌ Error guardando escenario '{name}'")
+    st.success(f"✅ Escenario '{name}' guardado localmente en este navegador")
 
 def load_scenario(name):
     """Load scenario from session state."""
@@ -498,15 +464,10 @@ def load_scenario(name):
     return None
 
 def delete_scenario(name):
-    """Delete scenario from both session state and file."""
+    """Delete scenario from browser session state only (local to this device/browser)."""
     if name in st.session_state.saved_scenarios:
         del st.session_state.saved_scenarios[name]
-        
-        # Save updated scenarios to file
-        if save_scenarios_to_file(st.session_state.saved_scenarios):
-            st.success(f"🗑️ Escenario '{name}' eliminado")
-        else:
-            st.error(f"❌ Error eliminando escenario '{name}'")
+        st.success(f"🗑️ Escenario '{name}' eliminado de este navegador")
 
 def export_scenarios_json():
     """Export all scenarios as JSON."""
@@ -571,7 +532,7 @@ st.markdown("<div class='step-header'>Introduce los datos de tu inversión</div>
 # Mandatory scenario naming section
 st.markdown("<div class='block-box'>", unsafe_allow_html=True)
 st.markdown("<span class='block-title'>📝 Nombre del escenario (Obligatorio)</span>", unsafe_allow_html=True)
-st.info("💾 Debes asignar un nombre a tu análisis antes de ver los resultados. Los escenarios se guardan automáticamente.")
+st.info("💾 Debes asignar un nombre a tu análisis antes de ver los resultados. Los escenarios se guardan localmente en tu navegador.")
 
 scenario_name = st.text_input(
 "Nombre del escenario*", 
@@ -591,7 +552,7 @@ st.markdown("</div>", unsafe_allow_html=True)
 # Saved scenarios section
 if st.session_state.saved_scenarios:
     with st.expander("📁 Escenarios guardados", expanded=False):
-        st.markdown("**Escenarios disponibles:**")
+        st.markdown("**Escenarios disponibles (guardados localmente en este navegador):**")
         for name, scenario in st.session_state.saved_scenarios.items():
             col1, col2, col3 = st.columns([3, 1, 1])
             with col1:
@@ -613,7 +574,8 @@ if st.session_state.saved_scenarios:
             "📥 Exportar todos los escenarios (JSON)",
             data=export_scenarios_json(),
             file_name=f"escenarios_inmuebles_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
-            mime="application/json"
+            mime="application/json",
+            help="Exporta tus escenarios guardados localmente para respaldarlos o transferirlos"
         )
 
 # Load default values (either from loaded scenario or fresh defaults)
