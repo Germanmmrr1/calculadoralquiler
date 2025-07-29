@@ -162,8 +162,7 @@ def get_stored_scenarios():
     # Create the storage component
     storage_component = components.html(
         create_persistent_storage(),
-        height=0,
-        key=f"storage_init_{st.session_state.get('storage_key', 0)}"
+        height=0
     )
     
     # Check if we have scenarios in session state that came from localStorage
@@ -183,8 +182,7 @@ def save_to_persistent_storage(name, scenario_data):
         }}
         </script>
         """,
-        height=0,
-        key=f"save_{name}_{datetime.now().timestamp()}"
+        height=0
     )
 
 def delete_from_persistent_storage(name):
@@ -199,8 +197,7 @@ def delete_from_persistent_storage(name):
         }}
         </script>
         """,
-        height=0,
-        key=f"delete_{name}_{datetime.now().timestamp()}"
+        height=0
     )
 
 # Validation functions
