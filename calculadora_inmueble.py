@@ -1,10 +1,9 @@
 import streamlit as st
 import math
 import json
+import base64
 from datetime import datetime
 import pandas as pd
-import os
-import tempfile
 import plotly.graph_objects as go
 import plotly.express as px
 from plotly.subplots import make_subplots
@@ -94,35 +93,62 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# Simplified persistence using file-based storage
+# Scenario persistence using browser localStorage via query parameters
+def request_local_scenarios():
+    """Ask the browser to send stored scenarios through the URL."""
+    st.components.v1.html(
+        """
+        <script>
+        (function() {
+          const params = new URLSearchParams(window.location.search);
+          if (!params.has('scenarios_b64')) {
+            const saved = window.localStorage.getItem('inmueble_scenarios');
+            if (saved) {
+              params.set('scenarios_b64', btoa(unescape(encodeURIComponent(saved))));
+            } else {
+              params.set('scenarios_b64', '');
+            }
+            window.location.search = params.toString();
+          }
+        })();
+        </script>
+        """,
+        height=0,
+    )
 
-def get_scenarios_file_path():
-    """Get the path for scenarios file in temp directory"""
-    temp_dir = tempfile.gettempdir()
-    return os.path.join(temp_dir, 'calculadora_inmueble_scenarios.json')
+    st.stop()
 
-def load_scenarios_from_file():
-    """Load scenarios from file"""
-    try:
-        file_path = get_scenarios_file_path()
-        if os.path.exists(file_path):
-            with open(file_path, 'r', encoding='utf-8') as f:
-                scenarios = json.load(f)
-                return scenarios
-    except Exception as e:
-        st.error(f"Error loading scenarios: {e}")
-    return {}
+def load_scenarios_from_url():
+    """Load scenarios from the URL query parameter if present."""
+    params = st.experimental_get_query_params()
+    if "scenarios_b64" in params:
+        b64 = params["scenarios_b64"][0]
+        if b64:
+            try:
+                decoded = base64.b64decode(b64).decode("utf-8")
+                data = json.loads(decoded)
+            except Exception:
+                data = {}
+        else:
+            data = {}
 
-def save_scenarios_to_file(scenarios):
-    """Save scenarios to file"""
-    try:
-        file_path = get_scenarios_file_path()
-        with open(file_path, 'w', encoding='utf-8') as f:
-            json.dump(scenarios, f, ensure_ascii=False, indent=2)
-        return True
-    except Exception as e:
-        st.error(f"Error saving scenarios: {e}")
-        return False
+        st.experimental_set_query_params()
+        return data, True
+
+    return {}, False
+
+def sync_local_storage():
+    """Persist scenarios in browser localStorage."""
+    data_json = json.dumps(st.session_state.saved_scenarios, ensure_ascii=False)
+    data_b64 = base64.b64encode(data_json.encode("utf-8")).decode("utf-8")
+    st.components.v1.html(
+        f"""
+        <script>
+        window.localStorage.setItem('inmueble_scenarios', decodeURIComponent(escape(window.atob('{data_b64}'))));
+        </script>
+        """,
+        height=0,
+    )
 
 # Validation functions
 def validate_inputs(precio_compra, alquiler_mes, entrada, tin, hipoteca_anos):
@@ -464,15 +490,25 @@ def create_expense_breakdown_chart(results):
 # Initialize session state
 if "step" not in st.session_state:
     st.session_state.step = 1
+
+# Load scenarios from browser storage on first load
+if "storage_loaded" not in st.session_state:
+    scenarios, loaded = load_scenarios_from_url()
+    if loaded:
+        st.session_state.saved_scenarios = scenarios
+        st.session_state.storage_loaded = True
+        sync_local_storage()
+    else:
+        request_local_scenarios()
+
 if "saved_scenarios" not in st.session_state:
-    # Load scenarios from file on first load
-    st.session_state.saved_scenarios = load_scenarios_from_file()
+    st.session_state.saved_scenarios = {}
 if "current_scenario_name" not in st.session_state:
     st.session_state.current_scenario_name = ""
 
 # Data persistence functions
 def save_scenario(name, data):
-    """Save current scenario to both session state and file."""
+    """Save current scenario to session state."""
     scenario = {
         "data": data,
         "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -480,12 +516,9 @@ def save_scenario(name, data):
     
     # Save to session state
     st.session_state.saved_scenarios[name] = scenario
-    
-    # Save all scenarios to file
-    if save_scenarios_to_file(st.session_state.saved_scenarios):
-        st.success(f"✅ Escenario '{name}' guardado correctamente")
-    else:
-        st.error(f"❌ Error guardando escenario '{name}'")
+
+    st.success(f"✅ Escenario '{name}' guardado correctamente")
+    sync_local_storage()
 
 def load_scenario(name):
     """Load scenario from session state."""
@@ -494,15 +527,12 @@ def load_scenario(name):
     return None
 
 def delete_scenario(name):
-    """Delete scenario from both session state and file."""
+    """Delete scenario from session state."""
     if name in st.session_state.saved_scenarios:
         del st.session_state.saved_scenarios[name]
-        
-        # Save updated scenarios to file
-        if save_scenarios_to_file(st.session_state.saved_scenarios):
-            st.success(f"🗑️ Escenario '{name}' eliminado")
-        else:
-            st.error(f"❌ Error eliminando escenario '{name}'")
+
+        st.success(f"🗑️ Escenario '{name}' eliminado")
+        sync_local_storage()
 
 def export_scenarios_json():
     """Export all scenarios as JSON."""
@@ -884,7 +914,10 @@ elif st.session_state.step == 2:
 
 elif st.session_state.step == 3:
     # Ensure the page loads at the start of the results
-    st.components.v1.html("<script>window.scrollTo(0, 0);</script>", height=0)
+    st.components.v1.html(
+        "<script>setTimeout(function(){window.scrollTo(0,0);},50);</script>",
+        height=0,
+    )
     st.markdown('<div id="top-of-results"></div>', unsafe_allow_html=True)
     
     d = st.session_state.inputs
