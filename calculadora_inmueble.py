@@ -879,6 +879,7 @@ elif st.session_state.step == 2:
             save_scenario(st.session_state.current_scenario_name, current_inputs)
             
             cambiar_paso(3)
+            st.rerun()
 
     if st.button("⬅️ Volver", key="input_back"):
         cambiar_paso(1)
