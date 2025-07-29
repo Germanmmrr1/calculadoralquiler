@@ -3,7 +3,8 @@ import math
 import json
 from datetime import datetime
 import pandas as pd
-import streamlit.components.v1 as components
+import os
+import tempfile
 
 st.set_page_config(page_title="Calculadora de inversión inmobiliaria", layout="centered")
 
@@ -89,116 +90,35 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# Enhanced Local Storage Management with better persistence
-def create_persistent_storage():
-    """Create a robust localStorage solution that persists across sessions"""
-    return """
-    <div id="scenario-storage" style="display: none;"></div>
-    <script>
-    const STORAGE_KEY = 'calculadora_inmueble_scenarios';
-    
-    // Enhanced localStorage functions with error handling
-    function saveScenarios(scenarios) {
-        try {
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(scenarios));
-            console.log('Scenarios saved to localStorage:', scenarios);
-            return true;
-        } catch (e) {
-            console.error('Failed to save scenarios:', e);
-            return false;
-        }
-    }
-    
-    function loadScenarios() {
-        try {
-            const stored = localStorage.getItem(STORAGE_KEY);
-            return stored ? JSON.parse(stored) : {};
-        } catch (e) {
-            console.error('Failed to load scenarios:', e);
-            return {};
-        }
-    }
-    
-    function deleteScenario(scenarioName) {
-        try {
-            const scenarios = loadScenarios();
-            delete scenarios[scenarioName];
-            return saveScenarios(scenarios);
-        } catch (e) {
-            console.error('Failed to delete scenario:', e);
-            return false;
-        }
-    }
-    
-    function addScenario(name, data) {
-        try {
-            const scenarios = loadScenarios();
-            scenarios[name] = data;
-            return saveScenarios(scenarios);
-        } catch (e) {
-            console.error('Failed to add scenario:', e);
-            return false;
-        }
-    }
-    
-    // Make functions globally available
-    window.calculadoraStorage = {
-        save: addScenario,
-        load: loadScenarios,
-        delete: deleteScenario,
-        getAll: loadScenarios
-    };
-    
-    // Auto-load and display current scenarios for debugging
-    const currentScenarios = loadScenarios();
-    document.getElementById('scenario-storage').setAttribute('data-scenarios', JSON.stringify(currentScenarios));
-    
-    console.log('Calculadora storage initialized. Current scenarios:', currentScenarios);
-    </script>
-    """
+# Simplified persistence using file-based storage
 
-def get_stored_scenarios():
-    """Get scenarios from localStorage using a simpler approach"""
-    # Create the storage component
-    storage_component = components.html(
-        create_persistent_storage(),
-        height=0
-    )
-    
-    # Check if we have scenarios in session state that came from localStorage
-    return st.session_state.get('saved_scenarios', {})
+def get_scenarios_file_path():
+    """Get the path for scenarios file in temp directory"""
+    temp_dir = tempfile.gettempdir()
+    return os.path.join(temp_dir, 'calculadora_inmueble_scenarios.json')
 
-def save_to_persistent_storage(name, scenario_data):
-    """Save scenario to browser localStorage"""
-    # Escape the name and data for JavaScript
-    escaped_name = name.replace("'", "\\'").replace('"', '\\"')
-    scenario_json = json.dumps(scenario_data).replace("'", "\\'")
-    
-    components.html(
-        create_persistent_storage() + f"""
-        <script>
-        if (window.calculadoraStorage) {{
-            window.calculadoraStorage.save('{escaped_name}', {scenario_json});
-        }}
-        </script>
-        """,
-        height=0
-    )
+def load_scenarios_from_file():
+    """Load scenarios from file"""
+    try:
+        file_path = get_scenarios_file_path()
+        if os.path.exists(file_path):
+            with open(file_path, 'r', encoding='utf-8') as f:
+                scenarios = json.load(f)
+                return scenarios
+    except Exception as e:
+        st.error(f"Error loading scenarios: {e}")
+    return {}
 
-def delete_from_persistent_storage(name):
-    """Delete scenario from browser localStorage"""
-    escaped_name = name.replace("'", "\\'").replace('"', '\\"')
-    
-    components.html(
-        create_persistent_storage() + f"""
-        <script>
-        if (window.calculadoraStorage) {{
-            window.calculadoraStorage.delete('{escaped_name}');
-        }}
-        </script>
-        """,
-        height=0
-    )
+def save_scenarios_to_file(scenarios):
+    """Save scenarios to file"""
+    try:
+        file_path = get_scenarios_file_path()
+        with open(file_path, 'w', encoding='utf-8') as f:
+            json.dump(scenarios, f, ensure_ascii=False, indent=2)
+        return True
+    except Exception as e:
+        st.error(f"Error saving scenarios: {e}")
+        return False
 
 # Validation functions
 def validate_inputs(precio_compra, alquiler_mes, entrada, tin, hipoteca_anos):
@@ -333,21 +253,14 @@ def calcular_resultados(
 if "step" not in st.session_state:
     st.session_state.step = 1
 if "saved_scenarios" not in st.session_state:
-    st.session_state.saved_scenarios = {}
+    # Load scenarios from file on first load
+    st.session_state.saved_scenarios = load_scenarios_from_file()
 if "current_scenario_name" not in st.session_state:
     st.session_state.current_scenario_name = ""
-if "localStorage_loaded" not in st.session_state:
-    st.session_state.localStorage_loaded = False
-
-# Initialize persistent storage on first visit
-if not st.session_state.localStorage_loaded:
-    # Initialize the storage system
-    get_stored_scenarios()
-    st.session_state.localStorage_loaded = True
 
 # Data persistence functions
 def save_scenario(name, data):
-    """Save current scenario to both session state and localStorage."""
+    """Save current scenario to both session state and file."""
     scenario = {
         "data": data,
         "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -356,10 +269,11 @@ def save_scenario(name, data):
     # Save to session state
     st.session_state.saved_scenarios[name] = scenario
     
-    # Save to browser localStorage
-    save_to_persistent_storage(name, scenario)
-    
-    st.success(f"✅ Escenario '{name}' guardado correctamente y persistirá entre sesiones")
+    # Save all scenarios to file
+    if save_scenarios_to_file(st.session_state.saved_scenarios):
+        st.success(f"✅ Escenario '{name}' guardado correctamente")
+    else:
+        st.error(f"❌ Error guardando escenario '{name}'")
 
 def load_scenario(name):
     """Load scenario from session state."""
@@ -368,14 +282,15 @@ def load_scenario(name):
     return None
 
 def delete_scenario(name):
-    """Delete scenario from both session state and localStorage."""
+    """Delete scenario from both session state and file."""
     if name in st.session_state.saved_scenarios:
         del st.session_state.saved_scenarios[name]
         
-        # Delete from localStorage
-        delete_from_persistent_storage(name)
-        
-        st.success(f"🗑️ Escenario '{name}' eliminado permanentemente")
+        # Save updated scenarios to file
+        if save_scenarios_to_file(st.session_state.saved_scenarios):
+            st.success(f"🗑️ Escenario '{name}' eliminado")
+        else:
+            st.error(f"❌ Error eliminando escenario '{name}'")
 
 def export_scenarios_json():
     """Export all scenarios as JSON."""
@@ -419,22 +334,30 @@ Esta herramienta te ayuda a analizar la rentabilidad y el cashflow de invertir e
 elif st.session_state.step == 2:
     st.markdown("<div class='step-header'>Introduce los datos de tu inversión</div>", unsafe_allow_html=True)
     
-    # Scenario management section
-    with st.expander("📁 Gestión de escenarios (Persistente)", expanded=False):
-        st.info("💾 Los escenarios se guardan automáticamente en tu navegador y persistirán entre sesiones")
-        col1, col2 = st.columns([2, 1])
-        with col1:
-            scenario_name = st.text_input("Nombre del escenario", value=st.session_state.current_scenario_name, placeholder="Ej: Piso Centro Madrid")
-        with col2:
-            if st.button("💾 Guardar escenario"):
-                if scenario_name.strip():
-                    # We'll save after collecting the data
-                    st.session_state.current_scenario_name = scenario_name
-                else:
-                    st.error("Por favor, introduce un nombre para el escenario")
-        
-        if st.session_state.saved_scenarios:
-            st.markdown("**Escenarios guardados:**")
+    # Mandatory scenario naming section
+    st.markdown("<div class='block-box'>", unsafe_allow_html=True)
+    st.markdown("<span class='block-title'>📝 Nombre del escenario (Obligatorio)</span>", unsafe_allow_html=True)
+    st.info("💾 Debes asignar un nombre a tu análisis antes de ver los resultados. Los escenarios se guardan automáticamente.")
+    
+    scenario_name = st.text_input(
+        "Nombre del escenario*", 
+        value=st.session_state.current_scenario_name, 
+        placeholder="Ej: Piso Centro Madrid - 200k€",
+        help="Este nombre te ayudará a identificar el análisis más tarde"
+    )
+    
+    if scenario_name.strip():
+        st.session_state.current_scenario_name = scenario_name.strip()
+        st.success(f"✅ Escenario: '{scenario_name.strip()}'")
+    else:
+        st.warning("⚠️ Introduce un nombre para continuar")
+    
+    st.markdown("</div>", unsafe_allow_html=True)
+    
+    # Saved scenarios section
+    if st.session_state.saved_scenarios:
+        with st.expander("📁 Escenarios guardados", expanded=False):
+            st.markdown("**Escenarios disponibles:**")
             for name, scenario in st.session_state.saved_scenarios.items():
                 col1, col2, col3 = st.columns([3, 1, 1])
                 with col1:
@@ -452,19 +375,12 @@ elif st.session_state.step == 2:
                         delete_scenario(name)
                         st.rerun()
             
-            col1, col2 = st.columns(2)
-            with col1:
-                st.download_button(
-                    "📥 Exportar escenarios (JSON)",
-                    data=export_scenarios_json(),
-                    file_name=f"escenarios_inmuebles_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
-                    mime="application/json"
-                )
-            with col2:
-                if st.button("🔄 Sincronizar almacenamiento"):
-                    # Re-initialize storage to try to load from localStorage
-                    st.session_state.localStorage_loaded = False
-                    st.rerun()
+            st.download_button(
+                "📥 Exportar todos los escenarios (JSON)",
+                data=export_scenarios_json(),
+                file_name=f"escenarios_inmuebles_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
+                mime="application/json"
+            )
 
     # Load default values (either from loaded scenario or defaults)
     loaded_data = getattr(st.session_state, 'loaded_data', {})
@@ -651,77 +567,51 @@ elif st.session_state.step == 2:
     if hasattr(st.session_state, 'loaded_data'):
         del st.session_state.loaded_data
     
-    col1, col2 = st.columns([1, 1])
-    with col1:
-        if st.button("Calcular resultados ➡️", type="primary"):
-            # Final validation before calculation
-            errors, _ = validate_inputs(precio_compra, alquiler_mes, entrada, tin, hipoteca_anos)
+    # Single button that requires scenario name
+    if st.button("📊 Calcular resultados ➡️", type="primary"):
+        # Check if scenario name is provided
+        if not st.session_state.current_scenario_name.strip():
+            st.error("❌ Debes introducir un nombre para el escenario antes de continuar")
+            st.stop()
+        
+        # Final validation before calculation
+        errors, _ = validate_inputs(precio_compra, alquiler_mes, entrada, tin, hipoteca_anos)
+        
+        if errors:
+            st.error("❌ Por favor, corrige los errores antes de continuar:")
+            for error in errors:
+                st.error(error)
+        else:
+            # Prepare data for storage
+            current_inputs = {
+                "aplica_reduccion_60": aplica_reduccion_60,
+                "precio_compra": precio_compra,
+                "reformas": reformas,
+                "comision_agencia": comision_agencia,
+                "alquiler_mes": alquiler_mes,
+                "entrada": entrada,
+                "tin": tin,
+                "hipoteca_anos": hipoteca_anos,
+                "gastos_compra": gastos_compra,
+                "itp_iva": itp_iva,
+                "irpf_marginal": irpf_marginal,
+                "valor_construccion_pct": valor_construccion_pct,
+                "seguro_impago": seguro_impago,
+                "impuesto_basuras": impuesto_basuras,
+                "seguro_hogar": seguro_hogar,
+                "seguro_vida": seguro_vida,
+                "comunidad": comunidad,
+                "ibi": ibi,
+                "mantenimiento": mantenimiento,
+                "vacio": vacio
+            }
             
-            if errors:
-                st.error("❌ Por favor, corrige los errores antes de continuar:")
-                for error in errors:
-                    st.error(error)
-            else:
-                # Prepare data for storage
-                current_inputs = {
-                    "aplica_reduccion_60": aplica_reduccion_60,
-                    "precio_compra": precio_compra,
-                    "reformas": reformas,
-                    "comision_agencia": comision_agencia,
-                    "alquiler_mes": alquiler_mes,
-                    "entrada": entrada,
-                    "tin": tin,
-                    "hipoteca_anos": hipoteca_anos,
-                    "gastos_compra": gastos_compra,
-                    "itp_iva": itp_iva,
-                    "irpf_marginal": irpf_marginal,
-                    "valor_construccion_pct": valor_construccion_pct,
-                    "seguro_impago": seguro_impago,
-                    "impuesto_basuras": impuesto_basuras,
-                    "seguro_hogar": seguro_hogar,
-                    "seguro_vida": seguro_vida,
-                    "comunidad": comunidad,
-                    "ibi": ibi,
-                    "mantenimiento": mantenimiento,
-                    "vacio": vacio
-                }
-                
-                st.session_state.inputs = current_inputs
-                
-                # Auto-save scenario if name is provided
-                if st.session_state.current_scenario_name.strip():
-                    save_scenario(st.session_state.current_scenario_name, current_inputs)
-                
-                cambiar_paso(3)
-    
-    with col2:
-        if st.button("💾 Guardar y continuar"):
-            if st.session_state.current_scenario_name.strip():
-                current_inputs = {
-                    "aplica_reduccion_60": aplica_reduccion_60,
-                    "precio_compra": precio_compra,
-                    "reformas": reformas,
-                    "comision_agencia": comision_agencia,
-                    "alquiler_mes": alquiler_mes,
-                    "entrada": entrada,
-                    "tin": tin,
-                    "hipoteca_anos": hipoteca_anos,
-                    "gastos_compra": gastos_compra,
-                    "itp_iva": itp_iva,
-                    "irpf_marginal": irpf_marginal,
-                    "valor_construccion_pct": valor_construccion_pct,
-                    "seguro_impago": seguro_impago,
-                    "impuesto_basuras": impuesto_basuras,
-                    "seguro_hogar": seguro_hogar,
-                    "seguro_vida": seguro_vida,
-                    "comunidad": comunidad,
-                    "ibi": ibi,
-                    "mantenimiento": mantenimiento,
-                    "vacio": vacio
-                }
-                save_scenario(st.session_state.current_scenario_name, current_inputs)
-            else:
-                st.error("Por favor, introduce un nombre para el escenario")
+            st.session_state.inputs = current_inputs
+            
+            # Always save scenario before proceeding
+            save_scenario(st.session_state.current_scenario_name, current_inputs)
+            
+            cambiar_paso(3)
 
     if st.button("⬅️ Volver", key="input_back"):
         cambiar_paso(1)
@@ -878,37 +768,6 @@ elif st.session_state.step == 3:
         else:
             st.info("Guarda más escenarios para poder compararlos")
     
-    with st.expander("📈 Análisis de sensibilidad", expanded=False):
-        st.markdown("**¿Cómo cambiaría la rentabilidad si...?**")
-        
-        col1, col2 = st.columns(2)
-        with col1:
-            st.markdown("**Precio de compra:**")
-            for change in [-10, -5, 5, 10]:
-                new_price = d['precio_compra'] * (1 + change/100)
-                temp_res = calcular_resultados(
-                    new_price, d['reformas'], d['comision_agencia'], d['alquiler_mes'], d['entrada'],
-                    d['tin'], d['hipoteca_anos'], d['irpf_marginal'], d['valor_construccion_pct'], 
-                    d['gastos_compra'] * (1 + change/100), d['itp_iva'] * (1 + change/100),
-                    d['seguro_impago'], d['impuesto_basuras'], d['seguro_hogar'], d['seguro_vida'],
-                    d['comunidad'], d['ibi'], d['mantenimiento'], d['vacio'], aplica_reduccion_60
-                )
-                color = "green" if temp_res["rentabilidad_neta_real"] > rentabilidad_neta else "red"
-                st.markdown(f"<span style='color:{color}'>{change:+d}%: {temp_res['rentabilidad_neta_real']:.2f}%</span>", unsafe_allow_html=True)
-        
-        with col2:
-            st.markdown("**Alquiler mensual:**")
-            for change in [-10, -5, 5, 10]:
-                new_rent = d['alquiler_mes'] * (1 + change/100)
-                temp_res = calcular_resultados(
-                    d['precio_compra'], d['reformas'], d['comision_agencia'], new_rent, d['entrada'],
-                    d['tin'], d['hipoteca_anos'], d['irpf_marginal'], d['valor_construccion_pct'], 
-                    d['gastos_compra'], d['itp_iva'], d['seguro_impago'], d['impuesto_basuras'], 
-                    d['seguro_hogar'], d['seguro_vida'], d['comunidad'], d['ibi'], d['mantenimiento'], 
-                    d['vacio'], aplica_reduccion_60
-                )
-                color = "green" if temp_res["rentabilidad_neta_real"] > rentabilidad_neta else "red"
-                st.markdown(f"<span style='color:{color}'>{change:+d}%: {temp_res['rentabilidad_neta_real']:.2f}%</span>", unsafe_allow_html=True)
 
     st.markdown("---")
     st.info("Puedes volver atrás y ajustar cualquier dato para analizar otros escenarios.")
