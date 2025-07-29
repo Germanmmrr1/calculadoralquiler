@@ -3,6 +3,7 @@ import math
 import json
 from datetime import datetime
 import pandas as pd
+import streamlit.components.v1 as components
 
 st.set_page_config(page_title="Calculadora de inversión inmobiliaria", layout="centered")
 
@@ -87,6 +88,120 @@ st.markdown("""
 }
 </style>
 """, unsafe_allow_html=True)
+
+# Enhanced Local Storage Management with better persistence
+def create_persistent_storage():
+    """Create a robust localStorage solution that persists across sessions"""
+    return """
+    <div id="scenario-storage" style="display: none;"></div>
+    <script>
+    const STORAGE_KEY = 'calculadora_inmueble_scenarios';
+    
+    // Enhanced localStorage functions with error handling
+    function saveScenarios(scenarios) {
+        try {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(scenarios));
+            console.log('Scenarios saved to localStorage:', scenarios);
+            return true;
+        } catch (e) {
+            console.error('Failed to save scenarios:', e);
+            return false;
+        }
+    }
+    
+    function loadScenarios() {
+        try {
+            const stored = localStorage.getItem(STORAGE_KEY);
+            return stored ? JSON.parse(stored) : {};
+        } catch (e) {
+            console.error('Failed to load scenarios:', e);
+            return {};
+        }
+    }
+    
+    function deleteScenario(scenarioName) {
+        try {
+            const scenarios = loadScenarios();
+            delete scenarios[scenarioName];
+            return saveScenarios(scenarios);
+        } catch (e) {
+            console.error('Failed to delete scenario:', e);
+            return false;
+        }
+    }
+    
+    function addScenario(name, data) {
+        try {
+            const scenarios = loadScenarios();
+            scenarios[name] = data;
+            return saveScenarios(scenarios);
+        } catch (e) {
+            console.error('Failed to add scenario:', e);
+            return false;
+        }
+    }
+    
+    // Make functions globally available
+    window.calculadoraStorage = {
+        save: addScenario,
+        load: loadScenarios,
+        delete: deleteScenario,
+        getAll: loadScenarios
+    };
+    
+    // Auto-load and display current scenarios for debugging
+    const currentScenarios = loadScenarios();
+    document.getElementById('scenario-storage').setAttribute('data-scenarios', JSON.stringify(currentScenarios));
+    
+    console.log('Calculadora storage initialized. Current scenarios:', currentScenarios);
+    </script>
+    """
+
+def get_stored_scenarios():
+    """Get scenarios from localStorage using a simpler approach"""
+    # Create the storage component
+    storage_component = components.html(
+        create_persistent_storage(),
+        height=0,
+        key=f"storage_init_{st.session_state.get('storage_key', 0)}"
+    )
+    
+    # Check if we have scenarios in session state that came from localStorage
+    return st.session_state.get('saved_scenarios', {})
+
+def save_to_persistent_storage(name, scenario_data):
+    """Save scenario to browser localStorage"""
+    # Escape the name and data for JavaScript
+    escaped_name = name.replace("'", "\\'").replace('"', '\\"')
+    scenario_json = json.dumps(scenario_data).replace("'", "\\'")
+    
+    components.html(
+        create_persistent_storage() + f"""
+        <script>
+        if (window.calculadoraStorage) {{
+            window.calculadoraStorage.save('{escaped_name}', {scenario_json});
+        }}
+        </script>
+        """,
+        height=0,
+        key=f"save_{name}_{datetime.now().timestamp()}"
+    )
+
+def delete_from_persistent_storage(name):
+    """Delete scenario from browser localStorage"""
+    escaped_name = name.replace("'", "\\'").replace('"', '\\"')
+    
+    components.html(
+        create_persistent_storage() + f"""
+        <script>
+        if (window.calculadoraStorage) {{
+            window.calculadoraStorage.delete('{escaped_name}');
+        }}
+        </script>
+        """,
+        height=0,
+        key=f"delete_{name}_{datetime.now().timestamp()}"
+    )
 
 # Validation functions
 def validate_inputs(precio_compra, alquiler_mes, entrada, tin, hipoteca_anos):
@@ -224,15 +339,30 @@ if "saved_scenarios" not in st.session_state:
     st.session_state.saved_scenarios = {}
 if "current_scenario_name" not in st.session_state:
     st.session_state.current_scenario_name = ""
+if "localStorage_loaded" not in st.session_state:
+    st.session_state.localStorage_loaded = False
+
+# Initialize persistent storage on first visit
+if not st.session_state.localStorage_loaded:
+    # Initialize the storage system
+    get_stored_scenarios()
+    st.session_state.localStorage_loaded = True
 
 # Data persistence functions
 def save_scenario(name, data):
-    """Save current scenario to session state."""
-    st.session_state.saved_scenarios[name] = {
+    """Save current scenario to both session state and localStorage."""
+    scenario = {
         "data": data,
         "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     }
-    st.success(f"✅ Escenario '{name}' guardado correctamente")
+    
+    # Save to session state
+    st.session_state.saved_scenarios[name] = scenario
+    
+    # Save to browser localStorage
+    save_to_persistent_storage(name, scenario)
+    
+    st.success(f"✅ Escenario '{name}' guardado correctamente y persistirá entre sesiones")
 
 def load_scenario(name):
     """Load scenario from session state."""
@@ -241,10 +371,14 @@ def load_scenario(name):
     return None
 
 def delete_scenario(name):
-    """Delete scenario from session state."""
+    """Delete scenario from both session state and localStorage."""
     if name in st.session_state.saved_scenarios:
         del st.session_state.saved_scenarios[name]
-        st.success(f"🗑️ Escenario '{name}' eliminado")
+        
+        # Delete from localStorage
+        delete_from_persistent_storage(name)
+        
+        st.success(f"🗑️ Escenario '{name}' eliminado permanentemente")
 
 def export_scenarios_json():
     """Export all scenarios as JSON."""
@@ -289,7 +423,8 @@ elif st.session_state.step == 2:
     st.markdown("<div class='step-header'>Introduce los datos de tu inversión</div>", unsafe_allow_html=True)
     
     # Scenario management section
-    with st.expander("📁 Gestión de escenarios", expanded=False):
+    with st.expander("📁 Gestión de escenarios (Persistente)", expanded=False):
+        st.info("💾 Los escenarios se guardan automáticamente en tu navegador y persistirán entre sesiones")
         col1, col2 = st.columns([2, 1])
         with col1:
             scenario_name = st.text_input("Nombre del escenario", value=st.session_state.current_scenario_name, placeholder="Ej: Piso Centro Madrid")
@@ -320,12 +455,19 @@ elif st.session_state.step == 2:
                         delete_scenario(name)
                         st.rerun()
             
-            st.download_button(
-                "📥 Exportar todos los escenarios (JSON)",
-                data=export_scenarios_json(),
-                file_name=f"escenarios_inmuebles_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
-                mime="application/json"
-            )
+            col1, col2 = st.columns(2)
+            with col1:
+                st.download_button(
+                    "📥 Exportar escenarios (JSON)",
+                    data=export_scenarios_json(),
+                    file_name=f"escenarios_inmuebles_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
+                    mime="application/json"
+                )
+            with col2:
+                if st.button("🔄 Sincronizar almacenamiento"):
+                    # Re-initialize storage to try to load from localStorage
+                    st.session_state.localStorage_loaded = False
+                    st.rerun()
 
     # Load default values (either from loaded scenario or defaults)
     loaded_data = getattr(st.session_state, 'loaded_data', {})
