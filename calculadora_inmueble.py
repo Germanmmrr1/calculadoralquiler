@@ -513,15 +513,12 @@ def format_number(val):
     return f"{val:,.0f} €".replace(",", ".")  # Si quieres punto como separador de miles
 
 def cambiar_paso(paso):
+    current_step = st.session_state.get('step', 1)
     st.session_state.step = paso
     
     # If going back to step 2 from results (step 3), reset for new scenario
-    if paso == 2 and st.session_state.get('step') == 3:
+    if paso == 2 and current_step == 3:
         reset_for_new_scenario()
-    
-    # Add a flag to scroll to top when going to results
-    if paso == 3:
-        st.session_state.scroll_to_top = True
     
     st.rerun()
 
@@ -886,15 +883,90 @@ elif st.session_state.step == 2:
 
 
 elif st.session_state.step == 3:
-    # Add JavaScript to scroll to top when results page loads
-    if st.session_state.get('scroll_to_top', False):
-        st.markdown("""
-        <script>
-        window.parent.document.documentElement.scrollTop = 0;
-        window.parent.document.body.scrollTop = 0;
-        </script>
-        """, unsafe_allow_html=True)
-        st.session_state.scroll_to_top = False
+    # Enhanced scroll to top with more aggressive methods
+    st.markdown("""
+    <script>
+    function forceScrollToTop() {
+        console.log('Attempting to scroll to top...');
+        
+        // Method 1: Direct window scroll
+        try {
+            window.scrollTo({top: 0, behavior: 'instant'});
+            window.scrollTo(0, 0);
+        } catch(e) {}
+        
+        // Method 2: Parent window scroll  
+        try {
+            if (window.parent && window.parent !== window) {
+                window.parent.scrollTo({top: 0, behavior: 'instant'});
+                window.parent.scrollTo(0, 0);
+            }
+        } catch(e) {}
+        
+        // Method 3: Document element scroll
+        try {
+            document.documentElement.scrollTop = 0;
+            document.body.scrollTop = 0;
+        } catch(e) {}
+        
+        // Method 4: Parent document scroll
+        try {
+            if (window.parent && window.parent.document) {
+                window.parent.document.documentElement.scrollTop = 0;
+                window.parent.document.body.scrollTop = 0;
+            }
+        } catch(e) {}
+        
+        // Method 5: Find and scroll all possible containers
+        try {
+            const allDocs = [document];
+            if (window.parent && window.parent.document && window.parent.document !== document) {
+                allDocs.push(window.parent.document);
+            }
+            
+            allDocs.forEach(doc => {
+                // Streamlit main container
+                const containers = doc.querySelectorAll('[data-testid="stAppViewContainer"], .main, .stApp, [data-testid="main"]');
+                containers.forEach(container => {
+                    container.scrollTop = 0;
+                    container.scrollTo && container.scrollTo(0, 0);
+                });
+                
+                // All scrollable elements
+                const scrollables = doc.querySelectorAll('*');
+                scrollables.forEach(el => {
+                    if (el.scrollTop > 0) {
+                        el.scrollTop = 0;
+                    }
+                });
+            });
+        } catch(e) {}
+    }
+    
+    // Execute multiple times with different delays
+    forceScrollToTop();
+    setTimeout(forceScrollToTop, 50);
+    setTimeout(forceScrollToTop, 100);
+    setTimeout(forceScrollToTop, 200);
+    setTimeout(forceScrollToTop, 500);
+    setTimeout(forceScrollToTop, 1000);
+    
+    // Listen for various events
+    document.addEventListener('DOMContentLoaded', forceScrollToTop);
+    window.addEventListener('load', forceScrollToTop);
+    
+    // Create an intersection observer to trigger when content loads
+    if (window.IntersectionObserver) {
+        const observer = new IntersectionObserver((entries) => {
+            setTimeout(forceScrollToTop, 100);
+        });
+        observer.observe(document.body);
+    }
+    </script>
+    """, unsafe_allow_html=True)
+    
+    # Add an anchor point at the top of results
+    st.markdown('<div id="top-of-results"></div>', unsafe_allow_html=True)
     
     d = st.session_state.inputs
     aplica_reduccion_60 = d['aplica_reduccion_60']
